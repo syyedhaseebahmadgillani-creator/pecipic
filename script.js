@@ -64,6 +64,12 @@ convertBtn.addEventListener("click", async () => {
     convertedBlob = blob;
 
     progress.innerHTML = "✅ Conversion complete — document ready!";
+    // Show success animation
+const successIcon = document.createElement("div");
+successIcon.className = "success-check";
+progress.after(successIcon);
+successIcon.style.display = "block";
+    
     previewSection.style.display = "block";
     textPreview.value = "Your editable Word document is ready for download.";
   } catch (error) {
