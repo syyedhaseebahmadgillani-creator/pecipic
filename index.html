@@ -14,14 +14,21 @@
   </header>
 
   <main>
-    <div class="upload-box">
-      <input type="file" id="imageInput" accept="image/*" />
-      <button id="convertBtn">Convert Now</button>
-    </div>
+  <div class="upload-box">
+    <input type="file" id="imageInput" accept="image/*" />
+    <button id="convertBtn">Convert Now</button>
+  </div>
 
-    <div id="progress" class="progress-text"></div>
-    <a id="downloadLink" class="download-btn" style="display:none;">Download Word File</a>
-  </main>
+  <div id="progress" class="progress-text"></div>
+
+  <!-- New Preview Section -->
+  <div id="previewSection" class="preview-box" style="display:none;">
+    <h3>📝 Preview & Edit Text</h3>
+    <textarea id="textPreview" placeholder="Recognized text will appear here..."></textarea>
+    <button id="downloadBtn">Download as Word File</button>
+  </div>
+</main>
+
 
   <footer>
     <p>© 2025 Pecipic.ai — Free AI-Powered Converter</p>
