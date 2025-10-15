@@ -1,5 +1,5 @@
-// Pecipic.ai — Full client-side OCR + Preview + real .docx generation using docx.js
-// Uses free OCR.Space demo key ("helloworld") for light testing. Replace with your API key later if needed.
+// Pecipic.ai — Hybrid Image + Text OCR Converter (layout + editable text)
+// Adds original image to the generated .docx along with extracted OCR text.
 
 const imageInput = document.getElementById("imageInput");
 const convertBtn = document.getElementById("convertBtn");
@@ -10,11 +10,25 @@ const downloadBtn = document.getElementById("downloadBtn");
 const copyBtn = document.getElementById("copyBtn");
 
 const OCR_API_URL = "https://api.ocr.space/parse/image";
-const API_KEY = "helloworld"; // demo key; for higher usage, register at ocr.space and replace
+const API_KEY = "helloworld"; // demo key (replace with your own later for higher usage)
 
 document.getElementById("year").textContent = new Date().getFullYear();
 
-// Convert button: send image to OCR.Space and show preview
+let uploadedImageData = null;
+
+// When file selected, store its data
+imageInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    uploadedImageData = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// Convert button: OCR + preview
 convertBtn.addEventListener("click", async () => {
   const file = imageInput.files[0];
   if (!file) {
@@ -22,125 +36,132 @@ convertBtn.addEventListener("click", async () => {
     return;
   }
 
-  progress.textContent = "⏳ Uploading image and reading text...";
+  progress.textContent = "⏳ Reading and processing image...";
   convertBtn.disabled = true;
   previewSection.style.display = "none";
 
   const formData = new FormData();
   formData.append("file", file);
   formData.append("apikey", API_KEY);
-  formData.append("language", "eng"); // change to "urd" later if supported by your key
+  formData.append("language", "eng");
   formData.append("isOverlayRequired", "false");
 
   try {
     const response = await fetch(OCR_API_URL, {
       method: "POST",
-      body: formData
+      body: formData,
     });
     const result = await response.json();
 
-    if (result && result.ParsedResults && result.ParsedResults.length > 0) {
-      const parsedText = result.ParsedResults[0].ParsedText || "";
-      const text = parsedText.trim();
-
+    if (result?.ParsedResults?.length > 0) {
+      const text = result.ParsedResults[0].ParsedText.trim();
       if (!text) {
-        progress.textContent = "⚠️ OCR finished but no readable text found. Try a clearer photo.";
-        return;
+        progress.textContent = "⚠️ OCR done but no text found. Still including image.";
+      } else {
+        progress.textContent = "✅ Text extracted. Preview below.";
       }
 
-      progress.textContent = "✅ Text recognized — preview below. Edit if needed.";
       textPreview.value = text;
       previewSection.style.display = "block";
-      previewSection.scrollIntoView({ behavior: "smooth", block: "center" });
+      previewSection.scrollIntoView({ behavior: "smooth" });
     } else {
-      progress.textContent = "⚠️ Could not extract text. Try another image.";
+      progress.textContent = "⚠️ No text detected — image only mode.";
+      previewSection.style.display = "none";
     }
   } catch (err) {
-    console.error(err);
-    progress.textContent = "❌ Error: " + (err.message || "Network or API error");
+    progress.textContent = "❌ OCR failed: " + err.message;
   } finally {
     convertBtn.disabled = false;
   }
 });
 
-// DOWNLOAD: generate a REAL .docx using docx.js (so Word mobile can open without error)
+// DOWNLOAD button — generates hybrid .docx with image + text
 downloadBtn.addEventListener("click", async () => {
-  const userText = textPreview.value.trim();
-  if (!userText) {
-    alert("Nothing to download. Please make sure text exists in the preview.");
+  if (!window.docx) {
+    alert("docx library not loaded, refresh page and try again.");
     return;
   }
 
-  try {
-    // ensure docx library is loaded
-    if (!window.docx) {
-      alert("docx library not loaded. Please refresh the page and try again.");
-      return;
+  const { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType } = window.docx;
+  const paragraphs = [];
+
+  // Add image layout at top
+  if (uploadedImageData) {
+    try {
+      const base64 = uploadedImageData.split(",")[1];
+      const imgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      paragraphs.push(
+        new Paragraph({
+          children: [
+            new ImageRun({
+              data: imgBytes,
+              transformation: { width: 600, height: 800 },
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+        })
+      );
+    } catch (err) {
+      console.error("Image embedding failed:", err);
     }
+  }
 
-    const { Document, Packer, Paragraph, TextRun, AlignmentType } = window.docx;
+  // Add a separator line
+  paragraphs.push(
+    new Paragraph({
+      children: [new TextRun({ text: "———————————————", bold: true })],
+      alignment: AlignmentType.CENTER,
+    })
+  );
 
-    // Build paragraphs from user lines (preserve empty lines)
-    const paragraphs = [];
-    paragraphs.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: "Converted by Pecipic.ai",
-            bold: true,
-            size: 28,
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-      })
-    );
-
+  // Add OCR text (if available)
+  const userText = textPreview.value.trim();
+  if (userText) {
     const lines = userText.split(/\r?\n/);
     for (const line of lines) {
-      // if line is empty, add an empty paragraph for spacing
-      if (line.trim() === "") {
-        paragraphs.push(new Paragraph({ children: [new TextRun("")] }));
-      } else {
-        paragraphs.push(
-          new Paragraph({
-            children: [new TextRun({ text: line })],
-          })
-        );
-      }
+      paragraphs.push(new Paragraph({ children: [new TextRun(line)] }));
     }
-
-    const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: paragraphs,
-        },
-      ],
-    });
-
-    progress.textContent = "⏳ Generating .docx file...";
-    const blob = await Packer.toBlob(doc);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "Pecipic-Converted.docx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    progress.textContent = "✅ Download started. Open with Word or Google Docs.";
-  } catch (err) {
-    console.error(err);
-    progress.textContent = "❌ Error while creating .docx: " + (err.message || err);
+  } else {
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun("No text detected — only image included.")],
+      })
+    );
   }
+
+  // Footer credit
+  paragraphs.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "\nConverted by Pecipic.ai",
+          italics: true,
+          size: 20,
+        }),
+      ],
+      alignment: AlignmentType.RIGHT,
+    })
+  );
+
+  const doc = new Document({ sections: [{ children: paragraphs }] });
+
+  progress.textContent = "⏳ Generating Word file...";
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Pecipic-Converted.docx";
+  a.click();
+  URL.revokeObjectURL(url);
+  progress.textContent = "✅ Download complete — open in Word to see layout + text.";
 });
 
-// Copy preview text to clipboard
+// Copy text
 copyBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(textPreview.value);
-    alert("Text copied to clipboard.");
-  } catch (err) {
-    alert("Could not copy text. Your browser may block clipboard access.");
+    alert("Text copied!");
+  } catch {
+    alert("Clipboard not supported in this browser.");
   }
 });
