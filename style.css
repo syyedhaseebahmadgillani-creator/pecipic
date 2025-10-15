@@ -162,3 +162,31 @@ footer {
   font-size: 0.9rem;
   opacity: 0.9;
 }
+
+/* ====== Animated Loader ====== */
+.loader {
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top: 4px solid #0ea5e9;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  margin: 10px auto;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+#progress {
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  margin-top: 10px;
+  color: #e2e8f0;
+}
+
+#progress p {
+  margin: 6px 0 0 0;
+  }
