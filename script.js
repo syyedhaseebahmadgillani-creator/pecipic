@@ -1,5 +1,5 @@
-// Pecipic.ai — Advanced client-side: OCR + Preview + Download (.docx-like)
-// Free OCR.Space demo key used ("helloworld") — suitable for light testing.
+// Pecipic.ai — Full client-side OCR + Preview + real .docx generation using docx.js
+// Uses free OCR.Space demo key ("helloworld") for light testing. Replace with your API key later if needed.
 
 const imageInput = document.getElementById("imageInput");
 const convertBtn = document.getElementById("convertBtn");
@@ -10,11 +10,11 @@ const downloadBtn = document.getElementById("downloadBtn");
 const copyBtn = document.getElementById("copyBtn");
 
 const OCR_API_URL = "https://api.ocr.space/parse/image";
-const API_KEY = "helloworld"; // demo key (limited). For heavier use, sign up on ocr.space and replace.
+const API_KEY = "helloworld"; // demo key; for higher usage, register at ocr.space and replace
 
 document.getElementById("year").textContent = new Date().getFullYear();
 
-// Convert button click: upload image to OCR.Space
+// Convert button: send image to OCR.Space and show preview
 convertBtn.addEventListener("click", async () => {
   const file = imageInput.files[0];
   if (!file) {
@@ -29,7 +29,7 @@ convertBtn.addEventListener("click", async () => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("apikey", API_KEY);
-  formData.append("language", "eng"); // change to "urd" or others if supported later
+  formData.append("language", "eng"); // change to "urd" later if supported by your key
   formData.append("isOverlayRequired", "false");
 
   try {
@@ -51,7 +51,6 @@ convertBtn.addEventListener("click", async () => {
       progress.textContent = "✅ Text recognized — preview below. Edit if needed.";
       textPreview.value = text;
       previewSection.style.display = "block";
-      // Scroll preview into view on small screens
       previewSection.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       progress.textContent = "⚠️ Could not extract text. Try another image.";
@@ -64,41 +63,79 @@ convertBtn.addEventListener("click", async () => {
   }
 });
 
-// Create and download a .docx-like file from edited text
-downloadBtn.addEventListener("click", () => {
+// DOWNLOAD: generate a REAL .docx using docx.js (so Word mobile can open without error)
+downloadBtn.addEventListener("click", async () => {
   const userText = textPreview.value.trim();
   if (!userText) {
     alert("Nothing to download. Please make sure text exists in the preview.");
     return;
   }
 
-  // Basic HTML-to-DOCX wrapper — works well with Word desktop, Word mobile, and Google Docs.
-  const docHtml = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office"
-          xmlns:w="urn:schemas-microsoft-com:office:word"
-          xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="utf-8"><title>Pecipic.ai Document</title></head>
-      <body>
-        <h2 style="text-align:center;">Converted by Pecipic.ai</h2>
-        <div>${userText.replace(/\n/g, "<br>")}</div>
-      </body>
-    </html>`;
+  try {
+    // ensure docx library is loaded
+    if (!window.docx) {
+      alert("docx library not loaded. Please refresh the page and try again.");
+      return;
+    }
 
-  const blob = new Blob(['\ufeff', docHtml], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  });
+    const { Document, Packer, Paragraph, TextRun, AlignmentType } = window.docx;
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "Pecipic-Converted.docx";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+    // Build paragraphs from user lines (preserve empty lines)
+    const paragraphs = [];
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Converted by Pecipic.ai",
+            bold: true,
+            size: 28,
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+      })
+    );
+
+    const lines = userText.split(/\r?\n/);
+    for (const line of lines) {
+      // if line is empty, add an empty paragraph for spacing
+      if (line.trim() === "") {
+        paragraphs.push(new Paragraph({ children: [new TextRun("")] }));
+      } else {
+        paragraphs.push(
+          new Paragraph({
+            children: [new TextRun({ text: line })],
+          })
+        );
+      }
+    }
+
+    const doc = new Document({
+      sections: [
+        {
+          properties: {},
+          children: paragraphs,
+        },
+      ],
+    });
+
+    progress.textContent = "⏳ Generating .docx file...";
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Pecipic-Converted.docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    progress.textContent = "✅ Download started. Open with Word or Google Docs.";
+  } catch (err) {
+    console.error(err);
+    progress.textContent = "❌ Error while creating .docx: " + (err.message || err);
+  }
 });
 
-// Copy text to clipboard
+// Copy preview text to clipboard
 copyBtn.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(textPreview.value);
